@@ -12,6 +12,7 @@ use tokio::fs;
 use crate::state::AppState;
 
 pub async fn style_json_handler(
+    State(state): State<Arc<AppState>>,
     Path(style): Path<String>,
     headers: HeaderMap,
 ) -> Json<Value> {
@@ -37,7 +38,7 @@ pub async fn style_json_handler(
                 "tiles": [
                     tile_url
                 ],
-                "tileSize": 512
+                "tileSize": state.config.render_image_size
             }
         },
         "layers": [

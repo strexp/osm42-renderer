@@ -39,6 +39,9 @@ pub struct Cli {
 
     #[arg(long, env = "RENDER_STACK_SIZE", default_value_t = 8)]
     pub render_stack_size_mb: usize,
+
+    #[arg(long, env = "RENDER_IMAGE_SIZE", default_value_t = 512)]
+    pub render_image_size: u32,
 }
 
 #[derive(Clone)]
@@ -54,6 +57,7 @@ pub struct AppConfig {
     pub render_worker_queue_size: usize,
     pub render_num_workers: usize,
     pub render_stack_size: usize,
+    pub render_image_size: u32,
 }
 
 impl AppConfig {
@@ -76,6 +80,7 @@ impl AppConfig {
             render_worker_queue_size: cli.render_worker_queue_size,
             render_num_workers,
             render_stack_size: cli.render_stack_size_mb * 1024 * 1024,
+            render_image_size: cli.render_image_size,
         }
     }
 }

@@ -4,6 +4,7 @@ use maplibre_native::{ImageRenderer, ImageRendererBuilder, Tile};
 use std::{
     collections::HashMap,
     io::Cursor,
+    num::NonZeroU32,
     sync::atomic::{AtomicUsize, Ordering},
     thread,
 };
@@ -19,13 +20,14 @@ pub struct RenderJob {
 
 pub struct RenderService {
     txs: Vec<mpsc::Sender<RenderJob>>,
-    worker_handles: Vec<Option<thread::JoinHandle<()>>>, 
+    worker_handles: Vec<Option<thread::JoinHandle<()>>>,
     next_worker: AtomicUsize,
 }
 
 impl RenderService {
     pub fn new(config: &AppConfig) -> Self {
         let num_workers = config.render_num_workers;
+        let render_image_size = config.render_image_size;
         let mut txs = Vec::with_capacity(num_workers);
         let mut worker_handles = Vec::with_capacity(num_workers);
 
@@ -33,19 +35,19 @@ impl RenderService {
 
         for i in 0..num_workers {
             let (tx, rx) = mpsc::channel(config.render_worker_queue_size);
-            
+
             let handle = thread::Builder::new()
                 .name(format!("ml-render-thread-{}", i))
                 .stack_size(config.render_stack_size)
-                .spawn(move || render_worker(rx))
+                .spawn(move || render_worker(rx, render_image_size))
                 .unwrap();
-                
+
             txs.push(tx);
             worker_handles.push(Some(handle));
         }
-            
-        Self { 
-            txs, 
+
+        Self {
+            txs,
             worker_handles,
             next_worker: AtomicUsize::new(0),
         }
@@ -53,14 +55,20 @@ impl RenderService {
 
     pub async fn submit_job(
         &self,
-        _style_name: &str, 
+        _style_name: &str,
         style_url: String,
         z: u8,
         x: u32,
         y: u32,
     ) -> Result<Bytes, String> {
         let (reply_to, rx) = oneshot::channel();
-        let job = RenderJob { z, x, y, style_url, reply_to };
+        let job = RenderJob {
+            z,
+            x,
+            y,
+            style_url,
+            reply_to,
+        };
 
         if self.txs.is_empty() {
             return Err("RenderService is shutting down".to_string());
@@ -92,16 +100,23 @@ impl Drop for RenderService {
     }
 }
 
-fn render_worker(mut rx: mpsc::Receiver<RenderJob>) {
+fn render_worker(mut rx: mpsc::Receiver<RenderJob>, render_image_size: u32) {
     let mut renderers: HashMap<String, ImageRenderer<Tile>> = HashMap::new();
+
+    let size =
+        NonZeroU32::new(render_image_size).expect("RENDER_IMAGE_SIZE must be greater than 0");
 
     while let Some(job) = rx.blocking_recv() {
         let renderer = renderers.entry(job.style_url.clone()).or_insert_with(|| {
-            tracing::debug!("Initializing MapLibre renderer for style: {}", job.style_url);
-            
+            tracing::debug!(
+                "Initializing MapLibre renderer for style: {}",
+                job.style_url
+            );
+
             let mut r = ImageRendererBuilder::default()
+                .with_size(size, size)
                 .build_tile_renderer();
-                
+
             if let Ok(parsed_url) = url::Url::parse(&job.style_url) {
                 r.load_style_from_url(&parsed_url);
             }
@@ -113,10 +128,7 @@ fn render_worker(mut rx: mpsc::Receiver<RenderJob>) {
     }
 }
 
-fn render_and_encode(
-    renderer: &mut ImageRenderer<Tile>,
-    job: &RenderJob,
-) -> Result<Bytes, String> {
+fn render_and_encode(renderer: &mut ImageRenderer<Tile>, job: &RenderJob) -> Result<Bytes, String> {
     let image = renderer
         .render_tile(job.z, job.x, job.y)
         .map_err(|e| format!("Rendering Error: {:?}", e))?;

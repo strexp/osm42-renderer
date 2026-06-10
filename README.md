@@ -42,6 +42,7 @@ The server can be configured via command-line arguments or environment variables
 | `--render-worker-queue-size`| `RENDER_WORKER_QUEUE_SIZE` | `1024` | Maximum job queue capacity per render worker. |
 | `--render-num-workers` | `RENDER_NUM_WORKERS` | *CPU cores* | Number of maplibre rendering threads. |
 | `--render-stack-size-mb` | `RENDER_STACK_SIZE_MB` | `8` | Stack size for render threads in megabytes. |
+| `--render-image-size`	| `RENDER_IMAGE_SIZE`	| `256` |	Output image width and height in pixels. |
 
 ## Benchmark Mode
 
